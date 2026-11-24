@@ -27,7 +27,7 @@
 
 
 <div style="position: absolute; top: 24px; bottom: 24px; right: 0; width: 340px; max-width: calc(100% - 64px); z-index: 50; transform: translateX({{drawerX}}); transition: transform .5s cubic-bezier(.2,.9,.25,1)">
-<section id="task-list" aria-label="Task list" style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; box-sizing: border-box; background: {{pal.menu}}; border: 1px solid {{pal.border}}; border-right: 0; border-radius: 44px 0 0 44px; box-shadow: {{drawerShadow}}; padding: 26px 18px 18px 24px; display: flex; flex-direction: column; gap: 14px; visibility: {{drawerVis}}; pointer-events: {{drawerPe}}; transition: {{drawerTr}}">
+<section id="task-list" class="felt stitch stitch-lg" aria-label="Task list" style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; box-sizing: border-box; background: {{pal.menu}}; border: 1px solid {{pal.border}}; border-right: 0; border-radius: 44px 0 0 44px; box-shadow: {{drawerShadow}}; padding: 26px 18px 18px 24px; display: flex; flex-direction: column; gap: 14px; visibility: {{drawerVis}}; pointer-events: {{drawerPe}}; transition: {{drawerTr}}">
 <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-right: 6px">
 <h2 style="margin: 0; font-family: 'Fredoka', sans-serif; font-size: 24px; font-weight: 600; color: var(--ink)">All tasks</h2>
 <span style="font-size: 12px; font-weight: 500; color: var(--ink3)">{{openCount}} open · by deadline</span>
@@ -35,16 +35,16 @@
 <div style="flex: 1; min-height: 0; position: relative; display: flex">
 <div class="listscroll" ref="{{listRef}}" onScroll="{{listScroll}}" style="flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding-right: 24px">
 <sc-for list="{{groups}}" as="g" hint-placeholder-count="4">
-<div style="border-top: 1px solid {{pal.line}}; padding: 12px 0 6px; display: flex; flex-direction: column; gap: 0">
+<div style="border-top: 1.5px dashed {{pal.border}}; padding: 12px 0 6px; display: flex; flex-direction: column; gap: 0">
 <div style="display: flex; align-items: center; gap: 8px; padding: 0 8px 4px">
-<span style="width: 9px; height: 9px; border-radius: 3px; background: {{g.color}}"></span>
+<svg width="12" height="16" viewBox="0 0 12 16" aria-hidden="true" style="flex: none"><rect x="0.5" y="0.5" width="11" height="3" rx="1.2" fill="#C99A63"></rect><rect x="0.5" y="12.5" width="11" height="3" rx="1.2" fill="#B5864F"></rect><rect x="2" y="3.5" width="8" height="9" fill="{{g.color}}"></rect><path d="M2 6h8M2 8.5h8M2 11h8" stroke="rgba(0,0,0,0.14)" stroke-width="0.8"></path></svg>
 <span style="flex: 1; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: {{g.dark}}">{{g.name}}</span>
 <span style="font-size: 12px; color: var(--ink3)">{{g.count}}</span>
 </div>
 <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="5">
 <div style="display: flex; align-items: center; gap: 2px; border-radius: 10px; background: {{r.bg}}">
 <button class="iconbtn" onClick="{{r.done}}" aria-label="{{r.doneLabel}}" style="width: 36px; height: 38px; flex: none; border: 0; border-radius: 9px; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0">
-<span style="width: 15px; height: 15px; box-sizing: border-box; border-radius: 50%; border: 1.5px solid var(--ink4)"></span>
+<svg width="17" height="17" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="7.5" fill="none" stroke="var(--ink4)" stroke-width="1.5" stroke-dasharray="3 2"></circle><circle cx="7" cy="9" r="1.1" fill="var(--ink4)"></circle><circle cx="11" cy="9" r="1.1" fill="var(--ink4)"></circle></svg>
 </button>
 <button class="rowbtn" onClick="{{r.pick}}" style="flex: 1; min-width: 0; min-height: 38px; border: 0; border-radius: 9px; background: transparent; display: flex; align-items: center; gap: 9px; padding: 4px 8px 4px 2px; cursor: pointer; text-align: left">
 <span style="width: 14px; height: 14px; flex: none; display: block">
@@ -65,8 +65,8 @@
 </div>
 </div>
 </section>
-<button onClick="{{toggleList}}" aria-expanded="{{listExpanded}}" aria-controls="task-list" aria-label="{{listLabel}}" style="position: absolute; left: -50px; top: 92px; width: 51px; height: 136px; box-sizing: border-box; padding: 0; background: {{pal.menu}}; border: 1px solid {{pal.border}}; border-right: 0; border-radius: 26px 0 0 26px; box-shadow: -8px 8px 20px rgba(92,62,40,0.10); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; cursor: pointer">
-<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M6.5 5h8M6.5 9h8M6.5 13h8" stroke="{{pal.ink}}" stroke-width="1.6" stroke-linecap="round"></path><circle cx="3.2" cy="5" r="1.1" fill="{{pal.ink}}"></circle><circle cx="3.2" cy="9" r="1.1" fill="{{pal.ink}}"></circle><circle cx="3.2" cy="13" r="1.1" fill="{{pal.ink}}"></circle></svg>
+<button class="felt stitch listtab" onClick="{{toggleList}}" aria-expanded="{{listExpanded}}" aria-controls="task-list" aria-label="{{listLabel}}" style="position: absolute; left: -50px; top: 92px; width: 51px; height: 136px; box-sizing: border-box; padding: 0; background: {{pal.menu}}; border: 1px solid {{pal.border}}; border-right: 0; border-radius: 26px 0 0 26px; box-shadow: -8px 8px 20px rgba(92,62,40,0.10); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; cursor: pointer">
+<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M7 5h8M7 9h8M7 13h8" stroke="{{pal.ink}}" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="2.4 1.8"></path><circle cx="3.4" cy="5" r="1.7" fill="none" stroke="{{pal.ink}}" stroke-width="1.2"></circle><circle cx="3.4" cy="9" r="1.7" fill="none" stroke="{{pal.ink}}" stroke-width="1.2"></circle><circle cx="3.4" cy="13" r="1.7" fill="none" stroke="{{pal.ink}}" stroke-width="1.2"></circle></svg>
 <span style="writing-mode: vertical-rl; transform: rotate(180deg); font-family: 'Fredoka', sans-serif; font-size: 16px; font-weight: 600; color: var(--ink); letter-spacing: 0.02em">List</span>
 </button>
 </div>
@@ -74,9 +74,9 @@
 <sc-if value="{{formOpen}}" hint-placeholder-val="{{ false }}">
 <div style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; z-index: 70">
 <button aria-label="Close new task" onClick="{{closeForm}}" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; border: 0; padding: 0; background: {{pal.scrim}}; cursor: default"></button>
-<div class="ntform" role="dialog" aria-modal="true" aria-labelledby="nt-title" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 480px; max-width: calc(100% - 32px); box-sizing: border-box; background: {{pal.menu}}; border: 1px solid {{pal.border}}; border-radius: 32px; box-shadow: 0 24px 60px rgba(80,52,30,0.22); padding: 22px 26px 22px; display: flex; flex-direction: column; gap: 14px">
+<div class="ntform felt stitch stitch-lg" ref="{{ntRef}}" role="dialog" aria-modal="true" aria-labelledby="nt-title" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 480px; max-width: calc(100% - 32px); box-sizing: border-box; background: {{pal.menu}}; border: 1px solid {{pal.border}}; border-radius: 32px; box-shadow: 0 24px 60px rgba(80,52,30,0.22); padding: 22px 26px 22px; display: flex; flex-direction: column; gap: 14px">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
-<h2 id="nt-title" style="margin: 0; font-family: 'Fredoka', sans-serif; font-size: 24px; font-weight: 600; color: var(--ink)">New task</h2>
+<h2 id="nt-title" style="margin: 0; font-family: 'Fredoka', sans-serif; font-size: 24px; font-weight: 600; color: var(--ink); display: flex; align-items: center; gap: 10px"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true" style="flex: none"><path d="M5 21L19 7" stroke="{{pal.ink3}}" stroke-width="2" stroke-linecap="round"></path><ellipse cx="20.6" cy="5.4" rx="1.6" ry="2.6" transform="rotate(45 20.6 5.4)" fill="none" stroke="{{pal.ink3}}" stroke-width="1.5"></ellipse><path d="M20 6C23 10 15 13 12 17S9 23 4 22" fill="none" stroke="{{pal.logo}}" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="3 2.4"></path></svg>New task</h2>
 <button class="iconbtn" onClick="{{closeForm}}" aria-label="Close new task" style="width: 36px; height: 36px; border: 0; border-radius: 10px; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; margin-right: -8px"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" stroke="{{pal.ink2}}" stroke-width="1.6" stroke-linecap="round"></path></svg></button>
 </div>
 
@@ -198,8 +198,8 @@
 </div>
 
 <div style="display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px">
-<button class="ghost" onClick="{{closeForm}}" style="height: 42px; padding: 0 16px; border: 1px solid {{pal.border}}; border-radius: 12px; background: var(--field); color: var(--ink2); font-size: 14px; font-weight: 500; cursor: pointer">Cancel</button>
-<button onClick="{{addTask}}" style="height: 42px; padding: 0 18px; border: 0; border-radius: 12px; background: var(--inv); color: var(--invfg); font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="{{pal.invfg}}" stroke-width="1.8" stroke-linecap="round"></path></svg>Add to web</button>
+<button class="ghost" onClick="{{closeForm}}" style="height: 42px; padding: 0 18px; border: 1px solid {{pal.border}}; border-radius: 999px; background: var(--field); color: var(--ink2); font-size: 14px; font-weight: 500; cursor: pointer">Cancel</button>
+<button class="stitch" onClick="{{addTask}}" style="--stitch: rgba(255,255,255,0.4); height: 42px; padding: 0 20px; border: 0; border-radius: 999px; background: var(--inv); color: var(--invfg); box-shadow: 0 6px 14px rgba(20,10,0,0.25); font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="{{pal.invfg}}" stroke-width="1.8" stroke-linecap="round"></path></svg>Add to web</button>
 </div>
 </div>
 </div>
@@ -280,11 +280,11 @@
 <div ref="{{zoomLayerRef}}" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform: translate({{zoom.x}}px, {{zoom.y}}px) scale({{zoom.k}}); transform-origin: 50% 50%; transition: {{zoom.tr}}; will-change: {{zoom.wc}}">
 
 <svg class="edge" viewBox="0 0 1000 640" preserveAspectRatio="none" aria-hidden="true">
-<sc-for list="{{edges}}" as="e" hint-placeholder-count="45"><g class="{{e.cls}}" stroke-opacity="{{e.op}}" fill="none" stroke-linecap="round" stroke-linejoin="round" style="transition: stroke-opacity .25s ease"><path d="{{e.d}}" transform="translate(0.9 1.8)" stroke="rgba(55,30,10,0.28)" stroke-width="{{e.w}}" stroke-dasharray="{{e.dash}}" vector-effect="non-scaling-stroke"></path><path d="{{e.d}}" stroke="{{e.color}}" stroke-width="{{e.w}}" stroke-dasharray="{{e.dash}}" vector-effect="non-scaling-stroke"></path><path d="{{e.d}}" stroke="rgba(255,255,255,0.3)" stroke-width="{{e.hw}}" stroke-dasharray="{{e.hdash}}" vector-effect="non-scaling-stroke"></path></g></sc-for>
+<sc-for list="{{edges}}" as="e" hint-placeholder-count="45"><g data-e="{{e.i}}" class="{{e.cls}}" stroke-opacity="{{e.op}}" fill="none" stroke-linecap="round" stroke-linejoin="round" style="transition: stroke-opacity .25s ease"><path d="{{e.d}}" transform="translate(0.9 1.8)" stroke="rgba(55,30,10,0.28)" stroke-width="{{e.w}}" stroke-dasharray="{{e.dash}}" vector-effect="non-scaling-stroke"></path><path d="{{e.d}}" stroke="{{e.color}}" stroke-width="{{e.w}}" stroke-dasharray="{{e.dash}}" vector-effect="non-scaling-stroke"></path><path d="{{e.d}}" stroke="rgba(255,255,255,0.3)" stroke-width="{{e.hw}}" stroke-dasharray="{{e.hdash}}" vector-effect="non-scaling-stroke"></path></g></sc-for>
 </svg>
 
 <sc-for list="{{nodes}}" as="n" hint-placeholder-count="23">
-<button class="node {{n.freshClass}}" onClick="{{n.pick}}" onMouseEnter="{{n.enter}}" onMouseLeave="{{n.leave}}" onFocus="{{n.enter}}" onBlur="{{n.leave}}" aria-label="{{n.aria}}" aria-pressed="{{n.pressed}}" style="left: {{n.left}}; top: {{n.top}}; transform: translate(calc(-50% + {{n.dx}}px), calc(-50% + {{n.dy}}px)); will-change: {{n.wc}}; width: {{n.hit}}px; height: {{n.hit}}px; opacity: {{n.op}}; z-index: {{n.z}}">
+<button class="node {{n.freshClass}}" data-nid="{{n.nid}}" onClick="{{n.pick}}" onMouseEnter="{{n.enter}}" onMouseLeave="{{n.leave}}" onFocus="{{n.enter}}" onBlur="{{n.leave}}" aria-label="{{n.aria}}" aria-pressed="{{n.pressed}}" style="left: {{n.left}}; top: {{n.top}}; transform: translate(calc(-50% + {{n.dx}}px), calc(-50% + {{n.dy}}px)); will-change: {{n.wc}}; width: {{n.hit}}px; height: {{n.hit}}px; opacity: {{n.op}}; z-index: {{n.z}}">
 <span class="shape" style="width: {{n.size}}px; height: {{n.size}}px; transform: translate(-50%, -50%) scale({{n.scale}})">
 <sc-if value="{{n.pulse}}" hint-placeholder-val="{{ false }}">
 <span class="stitchring" style="position: absolute; left: -9px; top: -9px; right: -9px; bottom: -9px; border-radius: 50%; border: 2px dashed {{n.color}}"></span>

@@ -259,8 +259,8 @@ class Component extends DCLogic {
         }
         this.cur[id] = c; this.vel[id] = v;
       });
-      this.forceUpdate();
       this.raf = moving ? requestAnimationFrame(step) : null;
+      if (moving) this.applyNudge(); else { this.applyNudge(); this.forceUpdate(); }
     };
     this.raf = requestAnimationFrame(step);
   }
@@ -601,6 +601,21 @@ class Component extends DCLogic {
     img.src = m[1];
   }
 
+  // Scale the New task form down (as a whole, keeping its design) so it always fits the window.
+  // Phones (860px wide or less) scroll the form instead, where shrinking would make it too small.
+  fitForm() {
+    const el = this._nt;
+    if (!el || !el.isConnected || typeof window === 'undefined') return;
+    el.style.zoom = '';
+    el.style.maxHeight = '';
+    if (window.innerWidth <= 860) return;
+    const avail = window.innerHeight - 32, h = el.offsetHeight;
+    if (h <= avail) return;
+    const z = Math.max(0.72, avail / h);
+    el.style.zoom = z.toFixed(3);
+    if (h * z > avail) { el.style.maxHeight = Math.floor(avail / z) + 'px'; el.style.overflowY = 'auto'; }
+  }
+
   bubblePos(z) {
     const a = this._anchor;
     if (!a) return { left: 'auto', right: 'auto', top: 'auto', bottom: 'auto' };
@@ -680,6 +695,39 @@ class Component extends DCLogic {
 
   hoverId() {
     return this._touch ? (this.state.sel || null) : this.state.hover;
+  }
+
+  applyNudge() {
+    const ctx = this._hctx, root = this.mainEl;
+    if (!ctx || !root || typeof document === 'undefined') { this.forceUpdate(); return; }
+    if (this._nudgeRv !== ctx.rv || !this._nudgeEls || !this._nudgeEls.ok()) {
+      const nodes = {}, gs = [];
+      root.querySelectorAll('button.node[data-nid]').forEach((el) => { nodes[el.getAttribute('data-nid')] = el; });
+      root.querySelectorAll('svg.edge g[data-e]').forEach((el) => { gs[+el.getAttribute('data-e')] = el; });
+      const any = Object.values(nodes)[0];
+      this._nudgeEls = { nodes: nodes, gs: gs, ok: () => !any || any.isConnected };
+      this._nudgeRv = ctx.rv;
+      this._nudgeLast = {};
+    }
+    const W = this.vpW || 1000, H = this.vpH || 640, last = this._nudgeLast, moved = {};
+    for (const id in ctx.pos) {
+      const o = this.cur[id] || { x: 0, y: 0 };
+      const l = last[id];
+      if (l && l.x === o.x && l.y === o.y) continue;
+      last[id] = { x: o.x, y: o.y };
+      moved[id] = true;
+      const el = this._nudgeEls.nodes[id];
+      if (el) el.style.transform = 'translate(calc(-50% + ' + (o.x / 1000 * W).toFixed(2) + 'px), calc(-50% + ' + (o.y / 640 * H).toFixed(2) + 'px))';
+    }
+    for (let i = 0; i < ctx.edges.length; i++) {
+      const e = ctx.edges[i];
+      if (!moved[e.a] && !moved[e.b]) continue;
+      const g = this._nudgeEls.gs[i];
+      if (!g) continue;
+      const A = ctx.pos[e.a], B = ctx.pos[e.b], oa = this.cur[e.a] || { x: 0, y: 0 }, ob = this.cur[e.b] || { x: 0, y: 0 };
+      const d = ctx.sp(e.st, A.x + oa.x, A.y + oa.y, B.x + ob.x, B.y + ob.y, 0, e.base);
+      for (let j = 0; j < g.children.length; j++) g.children[j].setAttribute('d', d);
+    }
   }
 
   setHover(id) {
@@ -774,6 +822,7 @@ class Component extends DCLogic {
     const DASH = { running: '14 5', back: '24 3', zigzag: 'none', chain: 'none', seed: '0.1 7', wave: 'none' };
     const HDASH = { running: '14 5', back: '24 3', zigzag: '1.5 3.5', chain: '1.5 3.5', seed: '0.1 7', wave: '1.5 3.5' };
     const slack = this.slack || 0;
+    const hEdges = [];
     const edges = this.links().filter((l) => shown[l[0]] && shown[l[1]]).map((l) => {
       const a = byId[l[0]], b = byId[l[1]];
       const cross = a.cat !== b.cat;
@@ -793,6 +842,7 @@ class Component extends DCLogic {
       const unpick = s.unpicking && (l[0] === s.unpicking || l[1] === s.unpicking);
       const sew = s.sewing && (l[0] === s.sewing || l[1] === s.sewing);
       return {
+        i: hEdges.push({ a: l[0], b: l[1], st: st, base: Math.hypot(b.x - a.x, b.y - a.y) }) - 1,
         d: stitchPath(st, a.px, a.py, b.px, b.py, 0, Math.hypot(b.x - a.x, b.y - a.y)),
         dash: DASH[st], hdash: HDASH[st],
         color: C[a.cat].color,
@@ -803,6 +853,9 @@ class Component extends DCLogic {
       };
     });
 
+    const hPos = {};
+    visible.forEach((t) => { hPos[t.id] = { x: t.x, y: t.y }; });
+    this._hctx = { sp: stitchPath, edges: hEdges, pos: hPos, rv: (this._hctx ? this._hctx.rv : 0) + 1 };
     const nodes = visible.map((t) => {
       const c = C[t.cat];
       const shape = t.imp ? 'tri' : 'circ';
@@ -816,6 +869,7 @@ class Component extends DCLogic {
       const show = urgent || hovered || s.names || mode === 'All' || (mode === 'Important' && shape === 'tri');
       return {
         title: t.title,
+        nid: t.id,
         left: (t.x / 10).toFixed(3) + '%',
         top: (t.y / 6.4).toFixed(3) + '%',
         dx: ((t.px - t.x) / 1000 * (this.vpW || 1000)).toFixed(2),
@@ -1598,6 +1652,12 @@ class Component extends DCLogic {
           if (!b || b.disabled || b.classList.contains('node')) return;
           this.sfx('click');
         }, true);
+      },
+      ntRef: (el) => {
+        if (!el || el === this._nt) return;
+        this._nt = el;
+        this.fitForm();
+        if (!this._ntResize && typeof window !== 'undefined') { this._ntResize = true; window.addEventListener('resize', () => this.fitForm()); }
       },
       texRef: (el) => { this._tx = el; if (el) this.bakeFabric(el); },
       zoomLayerRef: (el) => { this._zl = el; },
