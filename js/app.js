@@ -339,7 +339,7 @@ class Component extends DCLogic {
     const tg = e.target;
     if (tg && tg.closest && tg.closest('[role="dialog"]')) return;
     e.preventDefault();
-    const z = this.state.zoom;
+    const z = this._live || this.state.zoom;
     let cx = 0, cy = 0;
     if (this.vpEl) {
       const r = this.vpEl.getBoundingClientRect();
@@ -350,9 +350,10 @@ class Component extends DCLogic {
     const nk = Math.max(0.5, Math.min(2.5, z.k * Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015))));
     const lx = (cx - z.x) / z.k, ly = (cy - z.y) / z.k;
     const p = this.clampPan(nk, cx - nk * lx, cy - nk * ly);
-    this.setState({ zoom: { k: nk, x: p.x, y: p.y }, wheeling: true });
+    if (!this.state.wheeling) this.setState({ wheeling: true });
+    this.liveZoom({ k: nk, x: p.x, y: p.y });
     clearTimeout(this._wt);
-    this._wt = setTimeout(() => this.setState({ wheeling: false }), 160);
+    this._wt = setTimeout(() => this.commitZoom({ wheeling: false }), 160);
   }
 
   onTouch(ev, kind) {
@@ -379,12 +380,12 @@ class Component extends DCLogic {
       }
       const nk = Math.max(0.5, Math.min(2.5, this.pinch.k0 * d / this.pinch.d0));
       const p = this.clampPan(nk, cx - nk * this.pinch.lx, cy - nk * this.pinch.ly);
-      this.setState({ zoom: { k: nk, x: p.x, y: p.y }, wheeling: true });
+      this.liveZoom({ k: nk, x: p.x, y: p.y });
     } else if (this.pinch && (!t || t.length < 2)) {
       this.pinch = null;
       this._pinchEnd = Date.now();
       this.drag = null;
-      this.setState({ wheeling: false });
+      this.commitZoom({ wheeling: false, dragging: false });
     }
   }
 
@@ -540,6 +541,82 @@ class Component extends DCLogic {
     return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + 'T' + p2(d.getHours()) + ':' + p2(d.getMinutes());
   }
 
+  texVals(s) {
+        const k = s.zoom.k;
+        const mw = this.mainW || 1440, mh = this.mainH || 900;
+        const cx = (this.vpL != null ? this.vpL : 64) + (this.vpW || 1000) / 2, cy = (this.vpT != null ? this.vpT : 96) + (this.vpH || 640) / 2;
+        const ox = cx * (1 - k) + s.zoom.x, oy = cy * (1 - k) + s.zoom.y;
+        const moving = !!(s.dragging || s.wheeling || this.pinch);
+        const ease = moving ? null : (s.autoFit ? '1.1s cubic-bezier(.3,.7,.2,1)' : '.3s cubic-bezier(.2,.8,.2,1)');
+        // every tile divides 200px, so the pattern repeats every 200px: draw a layer only
+        // slightly bigger than the screen and shift it by the leftover of a 200px period
+        const per = 200 * k;
+        const x0 = ((ox % per) + per) % per - per, y0 = ((oy % per) + per) % per - per;
+        return {
+          w: Math.ceil(mw / k) + 400,
+          h: Math.ceil(mh / k) + 400,
+          tf: 'translate(' + x0.toFixed(2) + 'px, ' + y0.toFixed(2) + 'px) scale(' + k + ')',
+          tr: ease ? 'transform ' + ease : 'none',
+          wc: moving ? 'transform' : 'auto'
+        };
+  }
+
+  bubblePos(z) {
+    const a = this._anchor;
+    if (!a) return { left: 'auto', right: 'auto', top: 'auto', bottom: 'auto' };
+    const VW = this.vpW || 1000, VH = this.vpH || 640;
+    const sx = VW / 2 + (a.px / 1000 * VW - VW / 2) * z.k + z.x;
+    const sy = VH / 2 + (a.py / 640 * VH - VH / 2) * z.k + z.y;
+    const gap = Math.round(a.half * z.k + 8), lift = 40;
+    return {
+      left: a.flip ? 'auto' : Math.round(sx + gap) + 'px',
+      right: a.flip ? Math.round(VW - sx + gap) + 'px' : 'auto',
+      top: a.below ? 'auto' : Math.round(sy - lift) + 'px',
+      bottom: a.below ? Math.round(VH - sy - lift) + 'px' : 'auto'
+    };
+  }
+
+  // Move the web, fabric, bubble and zoom readout straight from a gesture, without a re-render.
+  liveZoom(z) {
+    this._live = z;
+    const ok = (el) => el && el.isConnected;
+    if (ok(this._zl)) {
+      this._zl.style.transition = 'none';
+      this._zl.style.willChange = 'transform';
+      this._zl.style.transform = 'translate(' + Math.round(z.x) + 'px, ' + Math.round(z.y) + 'px) scale(' + z.k + ')';
+    }
+    if (ok(this._tx)) {
+      const t = this.texVals(Object.assign({}, this.state, { zoom: z, dragging: true }));
+      const st = this._tx.style;
+      st.transition = 'none'; st.willChange = 'transform';
+      if (st.width !== t.w + 'px') st.width = t.w + 'px';
+      if (st.height !== t.h + 'px') st.height = t.h + 'px';
+      st.transform = t.tf;
+    }
+    if (ok(this._bb) && this._anchor) {
+      // slide the bubble with a transform from where the last render put it (no layout)
+      const base = this._bbBase || (this._bbBase = this.bubblePos(this.state.zoom));
+      const p = this.bubblePos(z), st = this._bb.style;
+      const num = (v) => (v === 'auto' ? 0 : parseFloat(v));
+      const dx = this._anchor.flip ? num(base.right) - num(p.right) : num(p.left) - num(base.left);
+      const dy = this._anchor.below ? num(base.bottom) - num(p.bottom) : num(p.top) - num(base.top);
+      st.transition = 'none';
+      st.translate = dx + 'px ' + dy + 'px';
+    }
+    const pct = Math.round(z.k * 100);
+    if (ok(this._rg) && document.activeElement !== this._rg) this._rg.value = pct;
+    if (ok(this._pc)) this._pc.textContent = pct + '%';
+  }
+
+  // End of a gesture: hand the final zoom back to the app state (one render).
+  commitZoom(extra) {
+    const z = this._live;
+    this._live = null;
+    this._bbBase = null;
+    if (this._bb && this._bb.isConnected) this._bb.style.translate = '';
+    this.setState(Object.assign(z ? { zoom: z } : {}, extra || {}));
+  }
+
   setZoom(k) {
     const z = this.state.zoom;
     const nk = Math.max(0.5, Math.min(2.5, Math.round(k * 20) / 20));
@@ -570,7 +647,7 @@ class Component extends DCLogic {
   }
 
   renderVals() {
-    const s = this.state;
+    const s = this._live ? Object.assign({}, this.state, { zoom: this._live }) : this.state;
     const hv = this.hoverId();
     if (this._touch && this._lastSel !== s.sel) {
       this._lastSel = s.sel;
@@ -697,8 +774,11 @@ class Component extends DCLogic {
       const show = urgent || hovered || s.names || mode === 'All' || (mode === 'Important' && shape === 'tri');
       return {
         title: t.title,
-        left: (t.px / 10).toFixed(3) + '%',
-        top: (t.py / 6.4).toFixed(3) + '%',
+        left: (t.x / 10).toFixed(3) + '%',
+        top: (t.y / 6.4).toFixed(3) + '%',
+        dx: ((t.px - t.x) / 1000 * (this.vpW || 1000)).toFixed(2),
+        dy: ((t.py - t.y) / 640 * (this.vpH || 640)).toFixed(2),
+        wc: this.raf ? 'transform' : 'auto',
         size: size, hit: hit, scale: scale, rot: t.rot,
         isTri: shape === 'tri', isSq: shape === 'sq', isCirc: shape === 'circ',
         color: c.color, tint: c.tint,
@@ -784,18 +864,15 @@ class Component extends DCLogic {
     }));
 
     let b = {};
+    if (!selTask) this._anchor = null;
     if (selTask) {
       const t = selTask;
       const c = C[t.cat];
       const d = t.days;
-      const zk = s.zoom.k;
-      const VW = this.vpW || 1000, VH = this.vpH || 640;
-      const sx = VW / 2 + (t.px / 1000 * VW - VW / 2) * zk + s.zoom.x;
-      const sy = VH / 2 + (t.py / 640 * VH - VH / 2) * zk + s.zoom.y;
-      const gap = Math.round(hitFor(sizeFor(d)) / 2 * zk + 8);
-      const lift = 40;
       const flip = t.x > 560;
       const below = t.y > 330;
+      this._anchor = { px: t.px, py: t.py, half: hitFor(sizeFor(d)) / 2, flip: flip, below: below };
+      const bp = this.bubblePos(s.zoom);
       b = {
         title: t.title, catName: c.name, color: c.color, dark: c.dark, tint: c.tint,
         btnBg: pal.night ? c.color : c.dark, btnFg: pal.onColor,
@@ -827,10 +904,7 @@ class Component extends DCLogic {
         hasLoc: !!t.loc, loc: t.loc || '',
         desc: t.desc,
         tags: t.tags.map((x) => ({ t: x })),
-        left: flip ? 'auto' : Math.round(sx + gap) + 'px',
-        right: flip ? Math.round(VW - sx + gap) + 'px' : 'auto',
-        top: below ? 'auto' : Math.round(sy - lift) + 'px',
-        bottom: below ? Math.round(VH - sy - lift) + 'px' : 'auto',
+        left: bp.left, right: bp.right, top: bp.top, bottom: bp.bottom,
         tr: (s.dragging || s.wheeling || this.pinch) ? 'none' : 'left .3s cubic-bezier(.2,.8,.2,1), right .3s cubic-bezier(.2,.8,.2,1), top .3s cubic-bezier(.2,.8,.2,1), bottom .3s cubic-bezier(.2,.8,.2,1)',
         origin: (flip ? 'right' : 'left') + ' ' + (below ? 'bottom' : 'top'),
         tailLeft: !flip, tailRight: flip,
@@ -1358,19 +1432,10 @@ class Component extends DCLogic {
         this.setState({ catForm: { name: '', color: ci, err: '' }, form: null, urgentOpen: false });
       },
       catForm: catFormVals,
-      tex: (() => {
-        const k = s.zoom.k;
-        const cx = 64 + (this.vpW || 1000) / 2, cy = 96 + (this.vpH || 640) / 2;
-        const ox = (cx * (1 - k) + s.zoom.x).toFixed(1) + 'px', oy = (cy * (1 - k) + s.zoom.y).toFixed(1) + 'px';
-        const sz = (n) => (n * k).toFixed(3) + 'px ' + (n * k).toFixed(3) + 'px';
-        const ease = (s.dragging || s.wheeling) ? null : (s.autoFit ? '1.1s cubic-bezier(.3,.7,.2,1)' : '.3s cubic-bezier(.2,.8,.2,1)');
-        return {
-          size: [sz(5.657), sz(11.314), sz(200)].join(', '),
-          pos: [ox + ' ' + oy, ox + ' ' + oy, ox + ' ' + oy].join(', '),
-          tr: 'background-color .4s ease' + (ease ? ', background-size ' + ease + ', background-position ' + ease : '')
-        };
-      })(),
-      zoom: { k: s.zoom.k, x: Math.round(s.zoom.x), y: Math.round(s.zoom.y), tr: (s.dragging || s.wheeling) ? 'none' : (s.autoFit ? 'transform 1.1s cubic-bezier(.3,.7,.2,1)' : 'transform .3s cubic-bezier(.2,.8,.2,1)'), cursor: s.dragging ? 'grabbing' : 'grab' },
+      todayDay: new Date().toLocaleDateString('en-US', { weekday: 'long' }),
+      todayDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' }),
+      tex: this.texVals(s),
+      zoom: { k: s.zoom.k, x: Math.round(s.zoom.x), y: Math.round(s.zoom.y), tr: (s.dragging || s.wheeling) ? 'none' : (s.autoFit ? 'transform 1.1s cubic-bezier(.3,.7,.2,1)' : 'transform .3s cubic-bezier(.2,.8,.2,1)'), cursor: s.dragging ? 'grabbing' : 'grab', wc: (s.dragging || s.wheeling || this.pinch) ? 'transform' : 'auto' },
       zoomPct: Math.round(s.zoom.k * 100),
       zoomLabel: Math.round(s.zoom.k * 100) + '%',
       zoomFill: Math.round((s.zoom.k - 0.5) / 2 * 1000) / 10,
@@ -1407,7 +1472,22 @@ class Component extends DCLogic {
         this.setZoom(v / 100);
       },
       zoomReset: () => this.setState({ zoom: { k: 1, x: 0, y: 0 }, dragging: false }),
-      vpRef: (el) => { if (el) { this.vpEl = el; const w = el.clientWidth, h = el.clientHeight; if (w !== this.vpW || h !== this.vpH) { this.vpW = w; this.vpH = h; this.forceUpdate(); } } },
+      vpRef: (el) => {
+        if (!el || el === this.vpEl) return;
+        this.vpEl = el;
+        // measure only when the size actually changes (reading sizes every render forces extra layout)
+        const measure = () => {
+          const w = el.clientWidth, h = el.clientHeight, l = el.offsetLeft, t = el.offsetTop;
+          const m = this.mainEl, mw = m ? m.clientWidth : 1440, mh = m ? m.clientHeight : 900;
+          if (w !== this.vpW || h !== this.vpH || l !== this.vpL || t !== this.vpT || mw !== this.mainW || mh !== this.mainH) {
+            this.vpW = w; this.vpH = h; this.vpL = l; this.vpT = t; this.mainW = mw; this.mainH = mh;
+            this.forceUpdate();
+          }
+        };
+        measure();
+        if (typeof ResizeObserver !== 'undefined') { this._ro = new ResizeObserver(measure); this._ro.observe(el); if (this.mainEl) this._ro.observe(this.mainEl); }
+        else if (typeof window !== 'undefined') window.addEventListener('resize', measure);
+      },
       needleRef: (el) => { if (el) this.needleEl = el; },
       trailRef: (el) => { if (el) this.trailEl = el; },
       needleHide: () => { if (this.needleEl) this.needleEl.style.opacity = '0'; },
@@ -1416,6 +1496,14 @@ class Component extends DCLogic {
         if (!el || el._clickBound) return;
         el._clickBound = true;
         if (typeof window !== 'undefined') window.addEventListener('resize', () => this.forceUpdate());
+        const tick = () => {
+          const now = new Date();
+          const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+          clearTimeout(this._dayT);
+          this._dayT = setTimeout(() => { this.forceUpdate(); tick(); }, Math.min(next - now, 3600000));
+        };
+        tick();
+        if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (!document.hidden) this.forceUpdate(); });
         try { this._touch = typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(hover: none)').matches; } catch (e) { this._touch = false; }
         const setMode = (touch) => {
           if (this._touch === touch) return;
@@ -1469,8 +1557,14 @@ class Component extends DCLogic {
           this.sfx('click');
         }, true);
       },
+      texRef: (el) => { this._tx = el; },
+      zoomLayerRef: (el) => { this._zl = el; },
+      bubbleRef: (el) => { this._bb = el; },
+      rangeRef: (el) => { this._rg = el; },
+      pctRef: (el) => { this._pc = el; },
       mainRef: (el) => {
         if (el) this.mainEl = el;
+        if (el && this._ro && !el._roObs) { el._roObs = true; this._ro.observe(el); }
         if (el && !el._wheelBound) {
           el._wheelBound = true;
           el.addEventListener('wheel', (ev) => this.onWheel(ev), { passive: false });
@@ -1491,17 +1585,18 @@ class Component extends DCLogic {
       },
       panMove: (e) => {
         if (!this.drag) return;
-        const z = this.state.zoom;
+        const z = this._live || this.state.zoom;
         if (Math.abs(e.clientX - this.drag.sx) + Math.abs(e.clientY - this.drag.sy) > 4) this.drag.moved = true;
+        if (!this.drag.moved) return;
         const p = this.clampPan(z.k, this.drag.x0 + e.clientX - this.drag.sx, this.drag.y0 + e.clientY - this.drag.sy);
-        this.setState({ zoom: { k: z.k, x: p.x, y: p.y } });
+        this.liveZoom({ k: z.k, x: p.x, y: p.y });
       },
       panUp: () => {
         if (!this.drag || this.pinch) return;
         const tapped = !this.drag.moved;
         this.drag = null;
-        if (tapped) this.setState({ dragging: false, sel: null, iconsFor: null, urgentOpen: false, catForm: null, keyOpen: false, pinsOpen: false });
-        else this.setState({ dragging: false });
+        if (tapped) this.commitZoom({ dragging: false, sel: null, iconsFor: null, urgentOpen: false, catForm: null, keyOpen: false, pinsOpen: false });
+        else this.commitZoom({ dragging: false });
       },
       hasUrgent: urgentList.length > 0,
       urgentLabel: urgentList.length + ' due by tomorrow',

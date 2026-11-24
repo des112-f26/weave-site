@@ -6,15 +6,18 @@
  *   {{path.to.value}}            text or attribute interpolation (dotted lookups only)
  *   <sc-for list="{{xs}}" as="x"> repeat children for each item in xs
  *   <sc-if value="{{cond}}">     render children only when cond is truthy
- *   onClick="{{fn}}" etc.        event handlers (delegated, see EVENTS below)
+ *   onClick="{{fn}}" etc.        event handlers
  *   ref="{{fn}}"                 called with the live element after every render
+ *
+ * The template is compiled once into small functions that build a light virtual
+ * tree; each render diffs that tree against the previous one and only touches
+ * the DOM where something actually changed. Renders are batched per frame.
  *
  * The app logic lives in a class that extends DCLogic and implements renderVals().
  */
 (function () {
   'use strict';
 
-  var VOID = { area: 1, base: 1, br: 1, col: 1, embed: 1, hr: 1, img: 1, input: 1, link: 1, meta: 1, source: 1, track: 1, wbr: 1 };
   // template attribute (lower-cased by the HTML parser) -> DOM event
   var EVENTS = {
     onclick: 'click', onchange: 'input', oninput: 'input', onkeydown: 'keydown',
@@ -22,124 +25,176 @@
     onpointerdown: 'pointerdown', onpointermove: 'pointermove', onpointerup: 'pointerup', onpointercancel: 'pointercancel',
     onscroll: 'scroll'
   };
-  var BUBBLING = ['click', 'input', 'keydown', 'pointerdown', 'pointermove', 'pointerup', 'pointercancel'];
-  var DIRECT = ['mouseenter', 'mouseleave', 'focus', 'blur', 'scroll'];
   var WHOLE = /^\s*\{\{\s*([A-Za-z_$][\w$.]*)\s*\}\}\s*$/;
   var HOLE = /\{\{\s*([A-Za-z_$][\w$.]*)\s*\}\}/g;
 
-  function esc(s) {
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-  function lookup(scope, path) {
+  function getter(path) {
     var parts = path.split('.');
-    var v = scope[parts[0]];
-    for (var i = 1; i < parts.length; i++) v = v == null ? undefined : v[parts[i]];
-    return v;
+    if (parts.length === 1) { var p0 = parts[0]; return function (s) { return s[p0]; }; }
+    if (parts.length === 2) { var a = parts[0], b = parts[1]; return function (s) { var v = s[a]; return v == null ? undefined : v[b]; }; }
+    return function (s) {
+      var v = s[parts[0]];
+      for (var i = 1; i < parts.length && v != null; i++) v = v[parts[i]];
+      return v;
+    };
   }
-  function interp(str, scope) {
-    return str.replace(HOLE, function (_, p) {
-      var v = lookup(scope, p);
-      return v == null ? '' : String(v);
-    });
+  // "a {{x}} b {{y.z}}" -> function(scope) -> string (or null when there are no holes)
+  function textFn(str) {
+    if (str.indexOf('{{') < 0) return null;
+    var parts = [], last = 0, m;
+    HOLE.lastIndex = 0;
+    while ((m = HOLE.exec(str))) {
+      if (m.index > last) parts.push(str.slice(last, m.index));
+      parts.push(getter(m[1]));
+      last = m.index + m[0].length;
+    }
+    if (last < str.length) parts.push(str.slice(last));
+    return function (s) {
+      var out = '';
+      for (var i = 0; i < parts.length; i++) {
+        var p = parts[i];
+        if (typeof p === 'string') out += p;
+        else { var v = p(s); if (v != null) out += v; }
+      }
+      return out;
+    };
   }
 
-  /* ---------- template -> HTML string ---------- */
-  function renderNodes(parent, scope, ctx, out) {
-    for (var n = parent.firstChild; n; n = n.nextSibling) renderNode(n, scope, ctx, out);
+  /* ---------- compile template DOM -> builder functions ---------- */
+  function compileChildren(parent) {
+    var fns = [];
+    for (var n = parent.firstChild; n; n = n.nextSibling) {
+      var f = compileNode(n);
+      if (f) fns.push(f);
+    }
+    return function (scope, out) {
+      for (var i = 0; i < fns.length; i++) fns[i](scope, out);
+    };
   }
-  function renderNode(node, scope, ctx, out) {
-    if (node.nodeType === 3) { out.push(esc(interp(node.nodeValue, scope))); return; }
-    if (node.nodeType !== 1) return;
+  function compileNode(node) {
+    if (node.nodeType === 3) {
+      var txt = node.nodeValue;
+      var tf = textFn(txt);
+      if (tf) return function (s, out) { out.push({ x: tf(s) }); };
+      return function (s, out) { out.push({ x: txt }); };
+    }
+    if (node.nodeType !== 1) return null;
     var tag = node.localName;
     if (tag === 'sc-for') {
-      var m = WHOLE.exec(node.getAttribute('list') || '');
-      var list = m ? lookup(scope, m[1]) : null;
+      var lm = WHOLE.exec(node.getAttribute('list') || '');
+      var listGet = lm ? getter(lm[1]) : function () { return null; };
       var as = node.getAttribute('as') || 'item';
-      if (list && list.length) {
+      var body = compileChildren(node);
+      return function (s, out) {
+        var list = listGet(s);
+        if (!list || !list.length) return;
         for (var i = 0; i < list.length; i++) {
-          var child = Object.create(scope);
+          var child = Object.create(s);
           child[as] = list[i];
-          renderNodes(node, child, ctx, out);
+          body(child, out);
         }
-      }
-      return;
+      };
     }
     if (tag === 'sc-if') {
-      var mv = WHOLE.exec(node.getAttribute('value') || '');
-      if (mv && lookup(scope, mv[1])) renderNodes(node, scope, ctx, out);
-      return;
+      var vm = WHOLE.exec(node.getAttribute('value') || '');
+      var condGet = vm ? getter(vm[1]) : function () { return false; };
+      var ifBody = compileChildren(node);
+      return function (s, out) { if (condGet(s)) ifBody(s, out); };
     }
-    out.push('<' + tag);
-    var evIds = {};
-    for (var a = 0; a < node.attributes.length; a++) {
-      var at = node.attributes[a];
-      var name = at.name, val = at.value;
+    var ns = node.namespaceURI;
+    var statics = {}, dyn = [], evs = [], refGet = null;
+    for (var i = 0; i < node.attributes.length; i++) {
+      var at = node.attributes[i], name = at.name, val = at.value;
       if (name.indexOf('hint-') === 0) continue;
       var whole = WHOLE.exec(val);
-      if (EVENTS[name]) {
-        var fn = whole ? lookup(scope, whole[1]) : null;
-        if (typeof fn === 'function') {
-          var ev = EVENTS[name];
-          (evIds[ev] = evIds[ev] || []).push(ctx.handlers.push(fn) - 1);
-        }
-        continue;
-      }
-      if (name === 'ref') {
-        var rf = whole ? lookup(scope, whole[1]) : null;
-        if (typeof rf === 'function') out.push(' data-ref="' + (ctx.refs.push(rf) - 1) + '"');
-        continue;
-      }
-      if (whole) {
-        var v = lookup(scope, whole[1]);
-        if (v === false || v == null) continue;
-        out.push(' ' + name + '="' + (v === true ? '' : esc(v)) + '"');
-      } else {
-        out.push(' ' + name + '="' + esc(interp(val, scope)) + '"');
+      if (EVENTS[name]) { if (whole) evs.push([EVENTS[name], getter(whole[1])]); continue; }
+      if (name === 'ref') { if (whole) refGet = getter(whole[1]); continue; }
+      if (whole) dyn.push([name, getter(whole[1]), true]);
+      else {
+        var tfn = textFn(val);
+        if (tfn) dyn.push([name, tfn, false]);
+        else statics[name] = val;
       }
     }
-    for (var k in evIds) out.push(' data-on-' + k + '="' + evIds[k].join(',') + '"');
-    out.push('>');
-    if (VOID[tag]) return;
-    renderNodes(tag === 'template' ? node.content : node, scope, ctx, out);
-    out.push('</' + tag + '>');
+    var kids = compileChildren(tag === 'template' ? node.content : node);
+    return function (s, out) {
+      var a = {};
+      for (var k in statics) a[k] = statics[k];
+      for (var j = 0; j < dyn.length; j++) {
+        var d = dyn[j], v = d[1](s);
+        if (d[2]) {
+          if (v === false || v == null) continue;
+          a[d[0]] = v === true ? '' : String(v);
+        } else a[d[0]] = v;
+      }
+      var on = null;
+      for (var e = 0; e < evs.length; e++) {
+        var fn = evs[e][1](s);
+        if (typeof fn === 'function') {
+          on = on || {};
+          var prev = on[evs[e][0]];
+          on[evs[e][0]] = prev ? (function (p1, p2) { return function (ev) { p1(ev); p2(ev); }; })(prev, fn) : fn;
+        }
+      }
+      var c = [];
+      kids(s, c);
+      out.push({ t: tag, ns: ns, a: a, on: on, ref: refGet ? refGet(s) : null, c: c });
+    };
   }
 
-  /* ---------- keyless DOM patching ---------- */
-  function same(a, b) {
-    return a.nodeType === b.nodeType && (a.nodeType !== 1 || (a.localName === b.localName && a.namespaceURI === b.namespaceURI));
+  /* ---------- virtual tree -> DOM ---------- */
+  function dispatch(ev) {
+    var h = this.__h && this.__h[ev.type];
+    if (h) h(ev);
   }
-  function syncAttrs(from, to) {
-    var i, at;
-    for (i = from.attributes.length - 1; i >= 0; i--) {
-      at = from.attributes[i];
-      if (!to.hasAttribute(at.name)) from.removeAttribute(at.name);
-    }
-    for (i = 0; i < to.attributes.length; i++) {
-      at = to.attributes[i];
-      if (from.getAttribute(at.name) !== at.value) from.setAttribute(at.name, at.value);
-    }
-    var tag = from.localName;
-    if (tag === 'input' || tag === 'textarea' || tag === 'select') {
-      var nv = to.getAttribute('value');
-      if (nv !== null && from.value !== nv && document.activeElement !== from) from.value = nv;
-      if (tag === 'input') from.checked = to.hasAttribute('checked');
+  function setEvents(el, on) {
+    var h = el.__h || (el.__h = {});
+    var bound = el.__hb || (el.__hb = {});
+    for (var k in h) if (!on || !on[k]) h[k] = null;
+    if (!on) return;
+    for (var t in on) {
+      h[t] = on[t];
+      if (!bound[t]) { el.addEventListener(t, dispatch); bound[t] = true; }
     }
   }
-  function morphChildren(fromEl, toEl) {
-    var f = fromEl.firstChild, t = toEl.firstChild;
-    while (t) {
-      var nextT = t.nextSibling;
-      if (!f) { fromEl.appendChild(t); t = nextT; continue; }
-      var nextF = f.nextSibling;
-      if (same(f, t)) {
-        if (f.nodeType === 1) { syncAttrs(f, t); morphChildren(f, t); }
-        else if (f.nodeValue !== t.nodeValue) f.nodeValue = t.nodeValue;
-      } else {
-        fromEl.replaceChild(t, f);
-      }
-      f = nextF; t = nextT;
+  function setValue(el, a) {
+    if ('value' in a && el.value !== a.value && document.activeElement !== el) el.value = a.value;
+  }
+  function create(v, refs) {
+    if (v.x !== undefined) return (v.el = document.createTextNode(v.x));
+    var el = v.el = v.ns && v.ns !== 'http://www.w3.org/1999/xhtml'
+      ? document.createElementNS(v.ns, v.t) : document.createElement(v.t);
+    for (var k in v.a) el.setAttribute(k, v.a[k]);
+    if (v.on) setEvents(el, v.on);
+    for (var i = 0; i < v.c.length; i++) el.appendChild(create(v.c[i], refs));
+    if (v.t === 'input' || v.t === 'textarea' || v.t === 'select') setValue(el, v.a);
+    if (v.ref) refs.push(v);
+    return el;
+  }
+  function same(o, n) {
+    if (o.x !== undefined || n.x !== undefined) return o.x !== undefined && n.x !== undefined;
+    return o.t === n.t && o.ns === n.ns;
+  }
+  function patch(o, n, refs) {
+    var el = n.el = o.el;
+    if (n.x !== undefined) { if (o.x !== n.x) el.nodeValue = n.x; return; }
+    var oa = o.a, na = n.a, k;
+    for (k in oa) if (!(k in na)) el.removeAttribute(k);
+    for (k in na) if (oa[k] !== na[k]) el.setAttribute(k, na[k]);
+    if (n.t === 'input' || n.t === 'textarea' || n.t === 'select') setValue(el, na);
+    if (o.on || n.on) setEvents(el, n.on);
+    patchChildren(el, o.c, n.c, refs);
+    if (n.ref) refs.push(n);
+  }
+  function patchChildren(parent, oc, nc, refs) {
+    var i, len = nc.length;
+    for (i = 0; i < len; i++) {
+      var o = oc[i], n = nc[i];
+      if (o && same(o, n)) patch(o, n, refs);
+      else if (o) parent.replaceChild(create(n, refs), o.el);
+      else parent.appendChild(create(n, refs));
     }
-    while (f) { var n = f.nextSibling; fromEl.removeChild(f); f = n; }
+    for (i = len; i < oc.length; i++) parent.removeChild(oc[i].el);
   }
 
   /* ---------- component base ---------- */
@@ -147,8 +202,8 @@
     this.props = props || {};
     this.state = {};
   }
-  DCLogic.prototype.setState = function (patch) {
-    var p = typeof patch === 'function' ? patch(this.state, this.props) : patch;
+  DCLogic.prototype.setState = function (patchObj) {
+    var p = typeof patchObj === 'function' ? patchObj(this.state, this.props) : patchObj;
     this.state = Object.assign({}, this.state, p);
     if (this.__schedule) this.__schedule();
   };
@@ -159,66 +214,25 @@
 
   /* ---------- mount ---------- */
   function mount(Comp, templateEl, container, props) {
-    var tpl = templateEl.content;
+    var build = compileChildren(templateEl.content);
     var inst = new Comp(props || {});
-    var handlers = [], refs = [], pending = false;
-    var scratch = document.createElement('template');
+    var prev = [], pending = false;
+    var defer = window.queueMicrotask || function (cb) { Promise.resolve().then(cb); };
 
     function render() {
       pending = false;
-      var ctx = { handlers: [], refs: [] };
-      var out = [];
-      renderNodes(tpl, inst.renderVals(), ctx, out);
-      scratch.innerHTML = out.join('');
-      handlers = ctx.handlers;
-      refs = ctx.refs;
-      morphChildren(container, scratch.content);
-      var els = container.querySelectorAll('[data-ref]');
-      for (var i = 0; i < els.length; i++) {
-        var r = refs[+els[i].getAttribute('data-ref')];
-        if (r) r(els[i]);
-      }
+      var next = [], refs = [];
+      build(inst.renderVals(), next);
+      patchChildren(container, prev, next, refs);
+      prev = next;
+      for (var i = 0; i < refs.length; i++) refs[i].ref(refs[i].el);
     }
     inst.__schedule = function () {
       if (pending) return;
       pending = true;
-      (window.queueMicrotask || function (cb) { Promise.resolve().then(cb); })(render);
+      defer(render);
     };
-
-    function wrap(ev, el, stop) {
-      return new Proxy(ev, {
-        get: function (t, k) {
-          if (k === 'currentTarget') return el;
-          if (k === 'stopPropagation') return function () { stop.v = true; t.stopPropagation(); };
-          var v = t[k];
-          return typeof v === 'function' ? v.bind(t) : v;
-        }
-      });
-    }
-    function call(el, type, ev, stop) {
-      var ids = el.getAttribute && el.getAttribute('data-on-' + type);
-      if (!ids) return;
-      ids.split(',').forEach(function (id) {
-        var h = handlers[+id];
-        if (h) h(wrap(ev, el, stop));
-      });
-    }
-    BUBBLING.forEach(function (type) {
-      container.addEventListener(type, function (ev) {
-        var stop = { v: false };
-        var el = ev.target && ev.target.nodeType === 3 ? ev.target.parentNode : ev.target;
-        while (el && el !== container && !stop.v) {
-          call(el, type, ev, stop);
-          el = el.parentNode;
-        }
-      });
-    });
-    DIRECT.forEach(function (type) {
-      container.addEventListener(type, function (ev) {
-        if (ev.target && ev.target.nodeType === 1) call(ev.target, type, ev, { v: false });
-      }, true);
-    });
-
+    container.textContent = '';
     render();
     return inst;
   }
