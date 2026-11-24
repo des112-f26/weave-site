@@ -279,9 +279,9 @@
 <div class="web-vp" ref="{{vpRef}}" style="position: absolute; left: 64px; right: 72px; top: 96px; bottom: 92px">
 <div ref="{{zoomLayerRef}}" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform: translate({{zoom.x}}px, {{zoom.y}}px) scale({{zoom.k}}); transform-origin: 50% 50%; transition: {{zoom.tr}}; will-change: {{zoom.wc}}">
 
-<sc-for list="{{edges}}" as="e" hint-placeholder-count="45">
-<svg class="edge" viewBox="0 0 1000 640" preserveAspectRatio="none" aria-hidden="true"><g class="{{e.cls}}" stroke-opacity="{{e.op}}" fill="none" stroke-linecap="round" stroke-linejoin="round" style="transition: stroke-opacity .25s ease"><path d="{{e.d}}" transform="translate(0.9 1.8)" stroke="rgba(55,30,10,0.28)" stroke-width="{{e.w}}" stroke-dasharray="{{e.dash}}" vector-effect="non-scaling-stroke"></path><path d="{{e.d}}" stroke="{{e.color}}" stroke-width="{{e.w}}" stroke-dasharray="{{e.dash}}" vector-effect="non-scaling-stroke"></path><path d="{{e.d}}" stroke="rgba(255,255,255,0.3)" stroke-width="{{e.hw}}" stroke-dasharray="{{e.hdash}}" vector-effect="non-scaling-stroke"></path></g></svg>
-</sc-for>
+<svg class="edge" viewBox="0 0 1000 640" preserveAspectRatio="none" aria-hidden="true">
+<sc-for list="{{edges}}" as="e" hint-placeholder-count="45"><g class="{{e.cls}}" stroke-opacity="{{e.op}}" fill="none" stroke-linecap="round" stroke-linejoin="round" style="transition: stroke-opacity .25s ease"><path d="{{e.d}}" transform="translate(0.9 1.8)" stroke="rgba(55,30,10,0.28)" stroke-width="{{e.w}}" stroke-dasharray="{{e.dash}}" vector-effect="non-scaling-stroke"></path><path d="{{e.d}}" stroke="{{e.color}}" stroke-width="{{e.w}}" stroke-dasharray="{{e.dash}}" vector-effect="non-scaling-stroke"></path><path d="{{e.d}}" stroke="rgba(255,255,255,0.3)" stroke-width="{{e.hw}}" stroke-dasharray="{{e.hdash}}" vector-effect="non-scaling-stroke"></path></g></sc-for>
+</svg>
 
 <sc-for list="{{nodes}}" as="n" hint-placeholder-count="23">
 <button class="node {{n.freshClass}}" onClick="{{n.pick}}" onMouseEnter="{{n.enter}}" onMouseLeave="{{n.leave}}" onFocus="{{n.enter}}" onBlur="{{n.leave}}" aria-label="{{n.aria}}" aria-pressed="{{n.pressed}}" style="left: {{n.left}}; top: {{n.top}}; transform: translate(calc(-50% + {{n.dx}}px), calc(-50% + {{n.dy}}px)); will-change: {{n.wc}}; width: {{n.hit}}px; height: {{n.hit}}px; opacity: {{n.op}}; z-index: {{n.z}}">

@@ -252,7 +252,7 @@ class Component extends DCLogic {
         v.x = v.x * 0.74 + (tg[id].x - c.x) * 0.13;
         v.y = v.y * 0.74 + (tg[id].y - c.y) * 0.13;
         c.x += v.x; c.y += v.y;
-        if (Math.abs(v.x) + Math.abs(v.y) > 0.02 || Math.abs(tg[id].x - c.x) + Math.abs(tg[id].y - c.y) > 0.05) {
+        if (Math.abs(v.x) + Math.abs(v.y) > 0.08 || Math.abs(tg[id].x - c.x) + Math.abs(tg[id].y - c.y) > 0.15) {
           moving = true;
         } else {
           c.x = tg[id].x; c.y = tg[id].y; v.x = 0; v.y = 0;
@@ -353,7 +353,7 @@ class Component extends DCLogic {
     if (!this.state.wheeling) this.setState({ wheeling: true });
     this.liveZoom({ k: nk, x: p.x, y: p.y });
     clearTimeout(this._wt);
-    this._wt = setTimeout(() => this.commitZoom({ wheeling: false }), 160);
+    this._wt = setTimeout(() => this.commitZoom({ wheeling: false }), 240);
   }
 
   onTouch(ev, kind) {
@@ -553,12 +553,52 @@ class Component extends DCLogic {
         const per = 200 * k;
         const x0 = ((ox % per) + per) % per - per, y0 = ((oy % per) + per) % per - per;
         return {
-          w: Math.ceil(mw / k) + 400,
-          h: Math.ceil(mh / k) + 400,
+          // only two sizes, so zooming never resizes (and repaints) the fabric on every tick
+          w: Math.ceil(mw / (k < 1 ? 0.5 : 1)) + 400,
+          h: Math.ceil(mh / (k < 1 ? 0.5 : 1)) + 400,
           tf: 'translate(' + x0.toFixed(2) + 'px, ' + y0.toFixed(2) + 'px) scale(' + k + ')',
           tr: ease ? 'transform ' + ease : 'none',
           wc: moving ? 'transform' : 'auto'
         };
+  }
+
+  // Draw the weave once into a 200px image tile. The CSS version (two gradients plus an SVG
+  // noise filter) looks the same but is far slower to repaint; it stays as the fallback.
+  bakeFabric(el) {
+    if (this._baked || typeof document === 'undefined') return;
+    this._baked = true;
+    const m = /url\("(data:image\/svg\+xml[^"]*)"\)/.exec(getComputedStyle(el).backgroundImage);
+    if (!m) return;
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const P = 200, R = 3, cv = document.createElement('canvas');
+        cv.width = cv.height = P * R;
+        const g = cv.getContext('2d');
+        g.scale(R, R);
+        g.drawImage(img, 0, 0, P, P);
+        // diagonal stripes; dir 1 runs down-right, dir -1 runs up-right
+        const stripes = (a, part, dir, color) => {
+          g.fillStyle = color;
+          for (let c = -P; c < 2 * P; c += a) {
+            const x0 = dir === 1 ? c : c - a * part, w = a * part;
+            g.beginPath();
+            g.moveTo(x0, 0); g.lineTo(x0 + w, 0);
+            g.lineTo(x0 + w + dir * P, P); g.lineTo(x0 + dir * P, P);
+            g.fill();
+          }
+        };
+        stripes(P / 18, 0.125, -1, 'rgba(0,0,0,.12)');
+        stripes(P / 36, 0.3, 1, 'rgba(255,255,255,.09)');
+        cv.toBlob((b) => {
+          if (!b) return;
+          const st = document.createElement('style');
+          st.textContent = '.fabric-tex{background-image:url("' + URL.createObjectURL(b) + '");background-size:200px 200px}';
+          document.head.appendChild(st);
+        });
+      } catch (e) { /* keep the CSS fabric */ }
+    };
+    img.src = m[1];
   }
 
   bubblePos(z) {
@@ -579,6 +619,7 @@ class Component extends DCLogic {
   // Move the web, fabric, bubble and zoom readout straight from a gesture, without a re-render.
   liveZoom(z) {
     this._live = z;
+    if (this.mainEl) this.mainEl.classList.add('gesturing');
     const ok = (el) => el && el.isConnected;
     if (ok(this._zl)) {
       this._zl.style.transition = 'none';
@@ -612,6 +653,7 @@ class Component extends DCLogic {
   commitZoom(extra) {
     const z = this._live;
     this._live = null;
+    if (this.mainEl) this.mainEl.classList.remove('gesturing');
     this._bbBase = null;
     if (this._bb && this._bb.isConnected) this._bb.style.translate = '';
     this.setState(Object.assign(z ? { zoom: z } : {}, extra || {}));
@@ -1557,7 +1599,7 @@ class Component extends DCLogic {
           this.sfx('click');
         }, true);
       },
-      texRef: (el) => { this._tx = el; },
+      texRef: (el) => { this._tx = el; if (el) this.bakeFabric(el); },
       zoomLayerRef: (el) => { this._zl = el; },
       bubbleRef: (el) => { this._bb = el; },
       rangeRef: (el) => { this._rg = el; },
