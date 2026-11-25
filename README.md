@@ -4,22 +4,14 @@ Your tasks as a web of sewn-on buttons. Bigger buttons are due sooner, triangles
 and threads join related tasks. Tap or hover a button to tug the web; pinch, scroll or use the
 tape measure to zoom.
 
+Jot down all your daily tasks in Weave's web, keeping you up to date but still allowing for flexibility. Large buttons indicate urgency, so you can stay on top of upcoming deadlines. Tasks are grouped by category to help you stay organized. With this circular way of viewing your timeline, you can decide which tasks are truly necessary to do instead of rushing to finish everything at once and burning out. 
+
 ## Run it
 
-It's a plain static site with no build step. Open `index.html` through any static server, e.g.
+Visit: https://des112-f26.github.io/weave-site/
 
-```
-python3 -m http.server
-```
-
-then visit http://localhost:8000.
-
-## Publish on GitHub Pages
-
-1. Push this folder's contents to a repository (with `index.html` at the top level).
-2. In the repo: Settings → Pages → Build and deployment → Deploy from a branch → `main` / root.
-
-All paths are relative, so it also works from a sub-path such as `username.github.io/weave/`.
+## Tools
+Weave was created using Claude Design and Claude Code. After researching and sketching, I used Claude design to build and ideate on Weave's interface, building and improving on the design with every pass. Once satisfied, I switched over to Claude Code to push it onto Github. 
 
 ## Files
 
